@@ -1,0 +1,46 @@
+name: Validación de Metadatos YAML
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  verificar-notas:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar Código del Repositorio
+        uses: actions/checkout@v4
+
+      - name: Validar Estructura de Notas Técnicas
+        run: |
+          echo "🔍 Iniciando auditoría automática de metadatos..."
+          ERROR_DETECTADO=0
+
+          # Buscar todos los archivos .md excluyendo el README, LICENSE y tags de la raíz
+          find . -name "*.md" ! -name "README.md" ! -name "LICENSE.md" ! -name "tags.md" ! -name "estructura-repositorio.md" | while read -r archivo; do
+            echo "----------------------------------------"
+            echo "📄 Auditando: $archivo"
+
+            # Extraer las primeras 10 líneas para revisar el Front Matter
+            CABECERA=$(head -n 10 "$archivo")
+
+            # Verificar cada metadato obligatorio
+            for etiqueta in "title:" "date:" "category:" "tags:"; do
+              if ! echo "$CABECERA" | grep -q "^$etiqueta"; then
+                echo "❌ ERROR: Falta el metadato obligatorio '$etiqueta' en la cabecera."
+                ERROR_DETECTADO=1
+              fi
+            done
+          done
+
+          # Si se detectó algún error en el bucle, forzar la caída del pipeline
+          if [ $ERROR_DETECTADO -ne 0 ]; then
+            echo "----------------------------------------"
+            echo "🚨 AUDITORÍA FALLIDA: Existen notas sin la cabecera YAML reglamentaria."
+            exit 1
+          else
+            echo "----------------------------------------"
+            echo "✅ AUDITORÍA EXITOSA: Todas las notas cumplen con el estándar institucional."
+          fi
