@@ -8,34 +8,32 @@ on:
 
 jobs:
   verificar-notas:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04   # más estable que ubuntu-latest
     steps:
       - name: Descargar Código del Repositorio
         uses: actions/checkout@v4
 
       - name: Validar Estructura de Notas Técnicas
+        shell: bash
         run: |
           echo "🔍 Iniciando auditoría automática de metadatos..."
           ERROR_DETECTADO=0
 
-          # Buscar todos los archivos .md excluyendo el README, LICENSE y tags de la raíz
-          find . -name "*.md" ! -name "README.md" ! -name "LICENSE.md" ! -name "tags.md" ! -name "estructura-repositorio.md" | while read -r archivo; do
+          # Buscar todos los archivos .md excluyendo los de raíz
+          for archivo in $(find . -name "*.md" ! -name "README.md" ! -name "LICENSE.md" ! -name "tags.md" ! -name "estructura-repositorio.md"); do
             echo "----------------------------------------"
             echo "📄 Auditando: $archivo"
 
-            # Extraer las primeras 10 líneas para revisar el Front Matter
             CABECERA=$(head -n 10 "$archivo")
 
-            # Verificar cada metadato obligatorio
             for etiqueta in "title:" "date:" "category:" "tags:"; do
-              if ! echo "$CABECERA" | grep -q "^$etiqueta"; then
+              if ! grep -q "^$etiqueta" <<< "$CABECERA"; then
                 echo "❌ ERROR: Falta el metadato obligatorio '$etiqueta' en la cabecera."
                 ERROR_DETECTADO=1
               fi
             done
           done
 
-          # Si se detectó algún error en el bucle, forzar la caída del pipeline
           if [ $ERROR_DETECTADO -ne 0 ]; then
             echo "----------------------------------------"
             echo "🚨 AUDITORÍA FALLIDA: Existen notas sin la cabecera YAML reglamentaria."
