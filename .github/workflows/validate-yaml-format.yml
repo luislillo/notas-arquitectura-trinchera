@@ -1,44 +1,73 @@
-name: Validación de Metadatos YAML
+name: Validación Completa de Cabeceras YAML
 
 on:
   push:
-    branches: [ main ]
+    branches:
+      - main
   pull_request:
-    branches: [ main ]
+    branches:
+      - main
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
-  verificar-notas:
-    runs-on: ubuntu-22.04   # más estable que ubuntu-latest
+  validar-cabeceras:
+    runs-on: ubuntu-22.04
     steps:
       - name: Descargar Código del Repositorio
         uses: actions/checkout@v4
 
-      - name: Validar Estructura de Notas Técnicas
+      - name: Validar Cabeceras YAML
         shell: bash
         run: |
-          echo "🔍 Iniciando auditoría automática de metadatos..."
+          echo "🔍 Iniciando validación avanzada de metadatos..."
           ERROR_DETECTADO=0
 
-          # Buscar todos los archivos .md excluyendo los de raíz
-          for archivo in $(find . -name "*.md" ! -name "README.md" ! -name "LICENSE.md" ! -name "tags.md" ! -name "estructura-repositorio.md"); do
+          # Buscar todos los archivos .md excluyendo estrictamente los archivos administrativos de la raíz
+          find . -name "*.md" ! -name "README.md" ! -name "LICENSE.md" ! -name "tags.md" ! -name "estructura-repositorio.md" ! -name "SUMMARY.md" ! -name "archivo-de-paso.md" -print0 | while read -r -d '' archivo; do
             echo "----------------------------------------"
             echo "📄 Auditando: $archivo"
 
-            CABECERA=$(head -n 10 "$archivo")
+            # Extraer las primeras 15 líneas para la revisión en frío
+            CABECERA=$(head -n 15 "$archivo")
 
+            # 1. Validar presencia de metadatos obligatorios
             for etiqueta in "title:" "date:" "category:" "tags:"; do
               if ! grep -q "^$etiqueta" <<< "$CABECERA"; then
-                echo "❌ ERROR: Falta el metadato obligatorio '$etiqueta' en la cabecera."
+                echo "❌ ERROR: Falta el metadato obligatorio '$etiqueta' en la cabecera de $archivo."
                 ERROR_DETECTADO=1
+                echo "ERROR_INTERNO=1" >> $GITHUB_ENV
               fi
             done
+
+            # 2. Validar formato de fecha YYYY-MM-DD
+            if grep -q "^date:" <<< "$CABECERA"; then
+              FECHA=$(grep "^date:" <<< "$CABECERA" | awk '{print $2}' | tr -d '"' | tr -d "'")
+              if ! [[ "$FECHA" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+                echo "❌ ERROR: Formato de fecha inválido en $archivo (obtenido: '$FECHA', esperado YYYY-MM-DD)."
+                ERROR_DETECTADO=1
+                echo "ERROR_INTERNO=1" >> $GITHUB_ENV
+              fi
+            fi
+
+            # 3. Validar que tags estén en formato lista [tag1, tag2]
+            if grep -q "^tags:" <<< "$CABECERA"; then
+              TAGS=$(grep "^tags:" <<< "$CABECERA")
+              if ! [[ "$TAGS" =~ tags:[[:space:]]*\[.*\] ]]; then
+                echo "❌ ERROR: Los 'tags' en $archivo deben estar en formato lista de corchetes [tag1, tag2]."
+                ERROR_DETECTADO=1
+                echo "ERROR_INTERNO=1" >> $GITHUB_ENV
+              fi
+            fi
           done
 
-          if [ $ERROR_DETECTADO -ne 0 ]; then
+          # Inyección técnica: rescatar el estado del bucle desde el entorno de GitHub
+          if [ "$ERROR_INTERNO" = "1" ]; then
             echo "----------------------------------------"
-            echo "🚨 AUDITORÍA FALLIDA: Existen notas sin la cabecera YAML reglamentaria."
+            echo "🚨 VALIDACIÓN FALLIDA: Existen notas con cabeceras YAML incompletas o inválidas."
             exit 1
           else
             echo "----------------------------------------"
-            echo "✅ AUDITORÍA EXITOSA: Todas las notas cumplen con el estándar institucional."
+            echo "✅ VALIDACIÓN EXITOSA: Todas las notas cumplen con el estándar institucional."
           fi
